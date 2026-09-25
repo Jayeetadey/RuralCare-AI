@@ -1,0 +1,406 @@
+# RuralCare AI — AI Design
+
+## 1. Purpose
+
+The AI component of RuralCare AI is responsible for understanding natural-language symptom descriptions and converting them into structured information.
+
+The AI is used for **symptom understanding**, not definitive medical diagnosis.
+
+```text
+User Input
+    ↓
+AI / NLP
+    ↓
+Structured Symptoms
+    ↓
+Safety Rule Engine
+    ↓
+Triage Recommendation
+```
+
+---
+
+## 2. AI Responsibilities
+
+The AI should:
+
+* Understand English symptom descriptions.
+* Understand Bengali symptom descriptions.
+* Extract relevant symptoms.
+* Extract symptom duration when available.
+* Identify reported severity when available.
+* Convert free-text input into structured JSON.
+* Provide information that can be evaluated by the deterministic safety rules.
+
+The AI should not:
+
+* Claim to diagnose a disease.
+* Generate prescriptions.
+* Override safety rules.
+* Invent symptoms that were not reported.
+* Make unsupported medical claims.
+
+---
+
+## 3. Input
+
+The AI receives structured input containing the patient's reported information.
+
+Example:
+
+```text
+Patient:
+Age: 42
+Gender: Female
+
+Symptom Description:
+"Amar 3 din dhore jor aar matha betha. Khub durbol lagche."
+```
+
+The input may be provided in:
+
+```text
+English
+Bengali
+Mixed English + Bengali
+```
+
+---
+
+## 4. Symptom Extraction
+
+The AI converts free text into structured information.
+
+Example:
+
+```text
+Input:
+
+"Amar 3 din dhore jor aar matha betha. Khub durbol lagche."
+
+                ↓
+
+AI
+
+                ↓
+
+Structured Output
+```
+
+Example JSON:
+
+```json
+{
+  "symptoms": [
+    {
+      "name": "fever",
+      "duration": "3 days"
+    },
+    {
+      "name": "headache",
+      "duration": "3 days"
+    },
+    {
+      "name": "weakness",
+      "duration": "3 days"
+    }
+  ],
+  "language": "bengali"
+}
+```
+
+---
+
+## 5. Structured Output Format
+
+The AI should return predictable JSON.
+
+Basic format:
+
+```json
+{
+  "language": "english",
+  "symptoms": [
+    {
+      "name": "fever",
+      "duration": "3 days",
+      "severity": "moderate"
+    }
+  ],
+  "additional_information": []
+}
+```
+
+If information is unavailable, the AI should return `null` rather than inventing a value.
+
+Example:
+
+```json
+{
+  "name": "fever",
+  "duration": null,
+  "severity": null
+}
+```
+
+---
+
+## 6. Multilingual Processing
+
+The system should support:
+
+```text
+English
+   ↓
+AI
+   ↓
+Structured Symptoms
+
+Bengali
+   ↓
+AI
+   ↓
+Structured Symptoms
+
+Mixed Bengali + English
+   ↓
+AI
+   ↓
+Structured Symptoms
+```
+
+Example:
+
+### English
+
+```text
+"I have had fever for three days."
+```
+
+### Bengali
+
+```text
+"আমার তিন দিন ধরে জ্বর।"
+```
+
+### Mixed
+
+```text
+"Amar 3 din dhore fever."
+```
+
+All three should be converted into a common structured representation.
+
+---
+
+## 7. AI Prompt Design
+
+The AI prompt should clearly define its role.
+
+Conceptual instruction:
+
+```text
+You are a symptom-information extraction assistant.
+
+Your task is to extract symptoms and relevant information
+from the user's description.
+
+Do not diagnose diseases.
+Do not prescribe medicines.
+Do not invent information.
+
+Return only structured JSON.
+
+Extract:
+- symptoms
+- duration
+- severity
+- language
+
+If information is not available, return null.
+```
+
+The final production prompt may be refined during implementation and testing.
+
+---
+
+## 8. AI Output Validation
+
+AI output should be validated before being passed to the safety rule engine.
+
+```text
+AI Response
+     ↓
+JSON Validation
+     ↓
+Valid?
+   /   \
+ YES    NO
+ ↓       ↓
+Continue Retry / Error
+ ↓
+Safety Rule Engine
+```
+
+The application should not blindly trust malformed AI output.
+
+---
+
+## 9. Safety Boundary
+
+The AI should never directly decide:
+
+```text
+"Patient has Disease X"
+```
+
+Instead, it should produce:
+
+```text
+"Reported symptoms include X, Y and Z."
+```
+
+The safety rule engine then evaluates predefined risk conditions.
+
+---
+
+## 10. AI + Safety Rule Architecture
+
+```text
+                 User
+                  ↓
+          English / Bengali
+                  ↓
+             AI / NLP
+                  ↓
+        Structured Symptoms
+                  ↓
+        ┌─────────────────┐
+        │ Safety Rules    │
+        └────────┬────────┘
+                 ↓
+        Risk / Red-Flag Check
+                 ↓
+       ┌─────────┼─────────┐
+       ↓         ↓         ↓
+   Home Care  Clinic    Urgent
+              Visit     Referral
+```
+
+---
+
+## 11. Example End-to-End Case
+
+Input:
+
+```text
+"Patient has fever and headache for three days."
+```
+
+AI output:
+
+```json
+{
+  "language": "english",
+  "symptoms": [
+    {
+      "name": "fever",
+      "duration": "3 days"
+    },
+    {
+      "name": "headache",
+      "duration": "3 days"
+    }
+  ]
+}
+```
+
+Then:
+
+```text
+Structured Symptoms
+        ↓
+Safety Rule Engine
+        ↓
+No predefined urgent red flag
+        ↓
+Further risk assessment
+        ↓
+Triage Recommendation
+```
+
+The final recommendation must be generated by the application's defined rules, not by an unsupported AI diagnosis.
+
+---
+
+## 12. Error Handling
+
+If the AI service is unavailable:
+
+```text
+AI Request
+    ↓
+Failed
+    ↓
+Show Error
+    ↓
+Allow Health Worker
+to use Guided Questionnaire
+```
+
+The application should remain usable for the core workflow even if the external AI service is temporarily unavailable.
+
+---
+
+## 13. Privacy
+
+Patient information should not be unnecessarily sent to an external AI service.
+
+Where possible, the AI request should contain only the information required for symptom understanding.
+
+The hackathon demo should use synthetic patient data.
+
+---
+
+## 14. MVP AI Scope
+
+For the hackathon MVP, the AI should support:
+
+* English symptom input
+* Bengali symptom input
+* Mixed-language symptom input
+* Symptom extraction
+* Duration extraction
+* Severity extraction where explicitly reported
+* Structured JSON output
+* Basic error handling
+
+Advanced capabilities such as medical diagnosis, medical imaging, voice diagnosis, and disease prediction are outside the MVP.
+
+---
+
+## 15. Final AI Pipeline
+
+```text
+Health Worker
+      ↓
+Symptom Input
+      ↓
+English / Bengali / Mixed
+      ↓
+AI / NLP
+      ↓
+JSON Validation
+      ↓
+Structured Symptoms
+      ↓
+Safety Rule Engine
+      ↓
+Risk Assessment
+      ↓
+Triage Recommendation
+      ↓
+Explanation to Health Worker
+```
+
+The AI therefore acts as a **language-understanding component**, while the safety and triage logic remains controlled by the application.
